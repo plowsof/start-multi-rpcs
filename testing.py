@@ -4,10 +4,8 @@ import subprocess
 import time
 import requests
 import threading
+import math
 
-# create multiple wallets using monero rpc
-# save blockheight as restore height so they can be used 
-# I do not need to do this - i can just copy and paste the same wallet also (if spending is not required)
 def init_monero_rpc(rpc_port,num_wallets,height):
     rpc_url = f"http://localhost:{rpc_port}/json_rpc"
     rpc_args = [ 
@@ -15,7 +13,7 @@ def init_monero_rpc(rpc_port,num_wallets,height):
         "--wallet-dir", "./wallets",
         "--rpc-bind-port", rpc_port,
         "--disable-rpc-login",
-        "--offline"
+        "--offline", "--stagenet"
         #"--daemon-address", remote_node
     ]
     monero_daemon = subprocess.Popen(rpc_args,stdout=subprocess.PIPE)
@@ -25,12 +23,12 @@ def init_monero_rpc(rpc_port,num_wallets,height):
         for num in range(num_wallets):
             print("lets create some wallets")
             params={
-            "filename": f"wallet_{num}",
+            "filename": f"stage{num}",
             "language": "English"
             }
             print("Creating wallet..")
             rpc_connection.create_wallet(params)
-            rpc_connection.open_wallet({"filename": f"wallet_{num}", "password" :""})
+            rpc_connection.open_wallet({"filename": f"stage{num}", "password" :""})
             mnemonic = rpc_connection.query_key({"key_type": "mnemonic"})["key"]
             main_address = rpc_connection.get_address()["address"]
             print(f"wallet {num}:\n{main_address}")
@@ -42,7 +40,6 @@ def init_monero_rpc(rpc_port,num_wallets,height):
 
     return monero_daemon
 
-# wait until rpc is reachable
 def rpc_wallet_online(rpc_con):
     num_retries = 0
     while True:
@@ -60,26 +57,28 @@ def rpc_wallet_online(rpc_con):
             time.sleep(1)
             num_retries += 1
 
-# todo: handle if remote node is offline / return so the wallet can be used on another node
-def open_wallet_transfer(rpc_port,wallet_num,remote_node,wallet):
-    print(remote_node)
+# torsocks --port 9150 /Applications/monero-wallet-gui.app/Contents/MacOS/monero-wallet-gui
+def open_wallet_transfer(rpc_port,remote_node,wallet):
+    remote_node = "xmr-lux.boldsuck.org:38081"
     rpc_url = f"http://localhost:{rpc_port}/json_rpc"
     rpc_args = [ 
         f"./monero-wallet-rpc", 
-        "--wallet-file", f"./wallets/{wallet}",
-        "--rpc-bind-port", rpc_port,
+        "--wallet-file", f"./wallets/stage{str(wallet)}",
+        "--rpc-bind-port", str(rpc_port),
         "--disable-rpc-login",
         "--daemon-address", remote_node,
         "--password", "", "--stagenet"
     ]
     monero_daemon = subprocess.Popen(rpc_args,stdout=subprocess.PIPE)
     for line in iter(monero_daemon.stdout.readline,''):
-        #print(line)
+        print(line)
         if b"Starting wallet RPC server" in line.rstrip():
             break
+        # wallet file open by another rpc
+        # failure to bind on port also an issue
         if b"Resource temporarily unavailable" in line.rstrip():
             print("Please stop this docker container using 'docker stop <name>")
-        if b"Error" in line.rstrip() or b"Failed" in line.rstrip():
+        if b"Error" in line.rstrip().lower() or b"Failed" in line.rstrip() or b"EXCEPTION" in line.rstrip():
             print(line.rstrip())
             break
         if b"failed: no connection to daemon" in line.rstrip():
@@ -100,31 +99,87 @@ def open_wallet_transfer(rpc_port,wallet_num,remote_node,wallet):
         "do_not_relay": True
         }
 
-    info = rpc_connection.transfer(params)
-    pprint.pprint(info)
-    print(f"Node: {remote_node}\nFee:{info['fee']}")
+    #info = rpc_connection.transfer(params)
+    #pprint.pprint(info)
+    #print(f"Node: {remote_node}\nFee:{info['fee']}")
+    rpc_connection.close_wallet()
     monero_daemon.terminate()
 
-'''
-height = requests.get("http://busyboredom.com:18081/get_info").json()["height"]
-d = init_monero_rpc("12311",10,height)
-d.terminate()
-'''
-
 def threaded_test(port,nodes,wallet):
-    open_wallet_transfer(port,"test",node,wallet)
+    for node in nodes:
+        node = f'{node["hostname"]}:{node["port"]}'
+        if "onion" not in node:
+            print(f"{port} {node} {wallet}")
+            open_wallet_transfer(port,node,str(wallet))
 
-nodes_thread1 = [
-    "stagenet.melo.tools:38081",
-    "stagenet.xmr-tw.org:38081",
-    "stagenet.community.rino.io:38081",
-    "xmr-lux.boldsuck.org:38081",
-    "node.sethforprivacy.com:38089",
-    "node2.sethforprivacy.com:38089"
-]
+def main():
+    stagenet = requests.get("https://www.ditatompel.com/api/monero/remote-node?nettype=stagenet").json()["data"]
 
-num = 1
-for node in nodes_thread1:
-    th = threading.Thread(target=threaded_test, args=(f"123{num}",node,f"stage{num}"))
-    th.start()
-    num += 1
+    extra_data =  {'adjusted_time': 1652096821,
+      'asn': 53667,
+      'asn_name': 'PONYNET',
+      'city': 'Roost',
+      'country': 'LU',
+      'database_size': 10737418240,
+      'difficulty': 323248,
+      'hostname': 'xmr-lux.boldsuck.org',
+      'ip_address': '104.244.75.217',
+      'is_tor': False,
+      'last_checked': 1652096854,
+      'last_height': 1088846,
+      'nettype': 'stagenet',
+      'port': 38081,
+      'postal': 0,
+      'protocol': 'http',
+      'status': 'online',
+      'uptime': 99.49
+      }
+
+
+    for i in range(30):
+        stagenet.append(extra_data)
+    num_wallets = 10
+    per_thread = len(stagenet) / num_wallets
+
+    counter = 1
+    total = len(stagenet)
+
+    if per_thread < 1:
+        per_thread = total
+
+    per_thread = math.floor(per_thread)
+
+
+    print(total)
+    print(per_thread)
+    the_list = {}
+    for i in range(num_wallets):
+        the_list[i] = []
+        the_list[i]
+
+    port = 14444
+    wallet_port = {}
+    for i in range(num_wallets):
+        wallet_port[i] = port
+        port+=1 
+
+    i = 0
+    wallet_counter = 0
+    for i in range(len(stagenet)):
+        the_list[wallet_counter].append(stagenet[i])
+        if wallet_counter == 9:
+            wallet_counter = 0
+        else:
+            wallet_counter += 1
+
+    for l in the_list:
+        threaded_test(wallet_port[l],the_list[l],l)
+
+if __name__ == "__main__":
+    #height = requests.get("http://busyboredom.com:18081/get_info").json()["height"]
+    '''
+    height = requests.get("http://xmr-lux.boldsuck.org:38081/get_info").json()["height"]
+    d = init_monero_rpc("12311",10,height)
+    d.terminate()
+    '''
+    main()
