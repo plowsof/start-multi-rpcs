@@ -3,6 +3,7 @@ import pprint
 import subprocess
 import time
 import requests
+import threading
 
 def init_monero_rpc(rpc_port,num_wallets,height):
     rpc_url = f"http://localhost:{rpc_port}/json_rpc"
@@ -55,11 +56,12 @@ def rpc_wallet_online(rpc_con):
             time.sleep(1)
             num_retries += 1
 
-def open_wallet_transfer(rpc_port,wallet_num,remote_node):
+def open_wallet_transfer(rpc_port,wallet_num,remote_node,wallet):
+    print(remote_node)
     rpc_url = f"http://localhost:{rpc_port}/json_rpc"
     rpc_args = [ 
         f"./monero-wallet-rpc", 
-        "--wallet-file", f"./wallets/stage",
+        "--wallet-file", f"./wallets/{wallet}",
         "--rpc-bind-port", rpc_port,
         "--disable-rpc-login",
         "--daemon-address", remote_node,
@@ -74,6 +76,10 @@ def open_wallet_transfer(rpc_port,wallet_num,remote_node):
             print("Please stop this docker container using 'docker stop <name>")
         if b"Error" in line.rstrip() or b"Failed" in line.rstrip():
             print(line.rstrip())
+            break
+        if b"failed: no connection to daemon" in line.rstrip():
+            print("daemon offline")
+            monero_daemon.terminate()
             break
     rpc_connection = AuthServiceProxy(service_url=f"http://127.0.0.1:{rpc_port}/json_rpc")
     params = {
@@ -100,8 +106,10 @@ d = init_monero_rpc("12311",10,height)
 d.terminate()
 '''
 
+def threaded_test(port,nodes,wallet):
+    open_wallet_transfer(port,"test",node,wallet)
 
-nodes = [
+nodes_thread1 = [
     "stagenet.melo.tools:38081",
     "stagenet.xmr-tw.org:38081",
     "stagenet.community.rino.io:38081",
@@ -110,5 +118,8 @@ nodes = [
     "node2.sethforprivacy.com:38089"
 ]
 
-for node in nodes:
-    open_wallet_transfer("12347","test",node)
+num = 1
+for node in nodes_thread1:
+    th = threading.Thread(target=threaded_test, args=(f"123{num}",node,f"stage{num}"))
+    th.start()
+    num += 1
