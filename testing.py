@@ -5,6 +5,7 @@ import time
 import requests
 import threading
 import math
+import shutil
 
 def init_monero_rpc(rpc_port,num_wallets,height):
     rpc_url = f"http://localhost:{rpc_port}/json_rpc"
@@ -34,7 +35,7 @@ def init_monero_rpc(rpc_port,num_wallets,height):
             print(f"wallet {num}:\n{main_address}")
             #save the wallet with a correct restore height
             rpc_connection.refresh({"start_height": (height - 1)})
-            rpc_connection.store()
+            rpc_connection.close_wallet()
     else:
         print("we couldnt start it")
 
@@ -71,7 +72,7 @@ def open_wallet_transfer(rpc_port,remote_node,wallet):
     ]
     monero_daemon = subprocess.Popen(rpc_args,stdout=subprocess.PIPE)
     for line in iter(monero_daemon.stdout.readline,''):
-        print(line)
+        #print(line)
         if b"Starting wallet RPC server" in line.rstrip():
             break
         # wallet file open by another rpc
@@ -99,9 +100,8 @@ def open_wallet_transfer(rpc_port,remote_node,wallet):
         "do_not_relay": True
         }
 
-    #info = rpc_connection.transfer(params)
-    #pprint.pprint(info)
-    #print(f"Node: {remote_node}\nFee:{info['fee']}")
+    info = rpc_connection.transfer(params)
+    print(f"Node: {remote_node}\nFee:{info['fee']}")
     rpc_connection.close_wallet()
     monero_daemon.terminate()
 
@@ -149,9 +149,6 @@ def main():
 
     per_thread = math.floor(per_thread)
 
-
-    print(total)
-    print(per_thread)
     the_list = {}
     for i in range(num_wallets):
         the_list[i] = []
@@ -173,7 +170,8 @@ def main():
             wallet_counter += 1
 
     for l in the_list:
-        threaded_test(wallet_port[l],the_list[l],l)
+        t = threading.Thread(target=threaded_test, args=(wallet_port[l],the_list[l],l,))
+        t.start()
 
 if __name__ == "__main__":
     #height = requests.get("http://busyboredom.com:18081/get_info").json()["height"]
@@ -182,4 +180,8 @@ if __name__ == "__main__":
     d = init_monero_rpc("12311",10,height)
     d.terminate()
     '''
+    # i cant make a wallet for some reason. copy an existing one instead
+    for i in range(10):
+        shutil.copy("./wallets/stage", f"./wallets/stage{i}")
+        shutil.copy("./wallets/stage.keys", f"./wallets/stage{i}.keys")
     main()
