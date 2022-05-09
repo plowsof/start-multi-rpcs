@@ -1,7 +1,7 @@
 # start-multi-rpcs
 example of 'launching rpc with a remote node + making a transfer'
 
-Testing on a list of 6 nodes
+Testing on a list of 6 nodes    
 with threading: [Finished in 23.8s] (1 rpc wallet for 1 node)    
 without threading finsished in 60~ seconds
 
