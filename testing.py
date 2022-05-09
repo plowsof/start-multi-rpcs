@@ -6,6 +6,7 @@ import requests
 import threading
 import math
 import shutil
+from bs4 import BeautifulSoup
 
 def init_monero_rpc(rpc_port,num_wallets,height):
     rpc_url = f"http://localhost:{rpc_port}/json_rpc"
@@ -60,7 +61,7 @@ def rpc_wallet_online(rpc_con):
 
 # torsocks --port 9150 /Applications/monero-wallet-gui.app/Contents/MacOS/monero-wallet-gui
 def open_wallet_transfer(rpc_port,remote_node,wallet):
-    remote_node = "xmr-lux.boldsuck.org:38081"
+    #remote_node = "xmr-lux.boldsuck.org:38081"
     rpc_url = f"http://localhost:{rpc_port}/json_rpc"
     rpc_args = [ 
         f"./monero-wallet-rpc", 
@@ -72,20 +73,23 @@ def open_wallet_transfer(rpc_port,remote_node,wallet):
     ]
     monero_daemon = subprocess.Popen(rpc_args,stdout=subprocess.PIPE)
     for line in iter(monero_daemon.stdout.readline,''):
-        #print(line)
+        print(line)
         if b"Starting wallet RPC server" in line.rstrip():
             break
         # wallet file open by another rpc
         # failure to bind on port also an issue
         if b"Resource temporarily unavailable" in line.rstrip():
             print("Please stop this docker container using 'docker stop <name>")
+            monero_daemon.terminate()
+            return
         if b"Error" in line.rstrip().lower() or b"Failed" in line.rstrip() or b"EXCEPTION" in line.rstrip():
             print(line.rstrip())
-            break
+            monero_daemon.terminate()
+            return
         if b"failed: no connection to daemon" in line.rstrip():
             print("daemon offline")
             monero_daemon.terminate()
-            break
+            return
     rpc_connection = AuthServiceProxy(service_url=f"http://127.0.0.1:{rpc_port}/json_rpc")
     params = {
         "destinations":[
@@ -107,14 +111,14 @@ def open_wallet_transfer(rpc_port,remote_node,wallet):
 
 def threaded_test(port,nodes,wallet):
     for node in nodes:
-        node = f'{node["hostname"]}:{node["port"]}'
+        #node = f'{node["hostname"]}:{node["port"]}'
         if "onion" not in node:
             print(f"{port} {node} {wallet}")
             open_wallet_transfer(port,node,str(wallet))
 
 def main():
+    '''
     stagenet = requests.get("https://www.ditatompel.com/api/monero/remote-node?nettype=stagenet").json()["data"]
-
     extra_data =  {'adjusted_time': 1652096821,
       'asn': 53667,
       'asn_name': 'PONYNET',
@@ -134,10 +138,20 @@ def main():
       'status': 'online',
       'uptime': 99.49
       }
-
-
-    for i in range(30):
+          for i in range(30):
         stagenet.append(extra_data)
+    '''
+
+    response = requests.get("https://monero.fail/?nettype=stagenet")
+    webpage = response.content
+    stagenet = []
+    soup = BeautifulSoup(webpage, "html.parser")
+    for tr in soup.find_all('tr'):
+        values = [data for data in tr.find_all('td')]
+        for value in values:
+            if "http" in value.text and "onion" not in value.text:
+                stagenet.append(value.text)
+
     num_wallets = 10
     per_thread = len(stagenet) / num_wallets
 
