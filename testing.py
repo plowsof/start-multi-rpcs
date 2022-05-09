@@ -8,7 +8,6 @@ import math
 import shutil
 from bs4 import BeautifulSoup
 
-# this is supposed to create wallets for me but they 'don't work' .. todo
 def init_monero_rpc(rpc_port,num_wallets,height):
     rpc_url = f"http://localhost:{rpc_port}/json_rpc"
     rpc_args = [ 
@@ -63,32 +62,41 @@ def rpc_wallet_online(rpc_con):
 # torsocks --port 9150 /Applications/monero-wallet-gui.app/Contents/MacOS/monero-wallet-gui
 def open_wallet_transfer(rpc_port,remote_node,wallet):
     #remote_node = "xmr-lux.boldsuck.org:38081"
+
     rpc_url = f"http://localhost:{rpc_port}/json_rpc"
+
     rpc_args = [ 
         f"./monero-wallet-rpc", 
         "--wallet-file", f"./wallets/stage{str(wallet)}",
         "--rpc-bind-port", str(rpc_port),
         "--disable-rpc-login",
         "--daemon-address", remote_node,
-        "--password", "", "--stagenet"
+        "--password", ""#, "--stagenet"
     ]
+    if "onion" in remote_node:
+        rpc_args.append("--proxy")
+        rpc_args.append("127.0.0.1:9050")
     monero_daemon = subprocess.Popen(rpc_args,stdout=subprocess.PIPE)
     for line in iter(monero_daemon.stdout.readline,''):
-        print(line)
+        #print(line)
         if b"Starting wallet RPC server" in line.rstrip():
             break
         # wallet file open by another rpc
         # failure to bind on port also an issue
         if b"Resource temporarily unavailable" in line.rstrip():
+            print(line)
             print("Please stop this docker container using 'docker stop <name>")
+            print(f"{remote_node} offline")
             monero_daemon.terminate()
             return
         if b"Error" in line.rstrip().lower() or b"Failed" in line.rstrip() or b"EXCEPTION" in line.rstrip():
-            print(line.rstrip())
+            print(line)
+            print(f"{remote_node} offline")
             monero_daemon.terminate()
             return
         if b"failed: no connection to daemon" in line.rstrip():
             print("daemon offline")
+            print(f"{remote_node} offline")
             monero_daemon.terminate()
             return
     rpc_connection = AuthServiceProxy(service_url=f"http://127.0.0.1:{rpc_port}/json_rpc")
@@ -96,7 +104,7 @@ def open_wallet_transfer(rpc_port,remote_node,wallet):
         "destinations":[
             {
                 "amount":1,
-                "address":"54hzhv2oXnHKHmbDhjuhN8Dz4XjUaxCuBBCWRRL5DPoWW7gDkGvetwB1bAkM4jBxnhLAawfL9sC4dibZGBhCtAMASxCuRvn"
+                "address":"88UbURD1esv6wJNqLEvJFn82JbX6awYW2BW4Sj2E3rahQbxP2C4FgGS6tdLp2wdPHJZ4PjgjuZbfi139oZ3LK9gcMXugv7C"
                 }],
         "account_index":0,
         "subaddr_indices":[0],
@@ -104,53 +112,31 @@ def open_wallet_transfer(rpc_port,remote_node,wallet):
         "ring_size":11,
         "do_not_relay": True
         }
-
-    info = rpc_connection.transfer(params)
-    print(f"Node: {remote_node}\nFee:{info['fee']}")
-    rpc_connection.close_wallet()
-    monero_daemon.terminate()
+    try:
+        r = requests.post(rpc_url, json={"jsonrpc":"2.0","id":"0","method":"transfer","params":params},timeout=120)
+        print(f"Node: {remote_node}")
+        print(r.json()["result"]["fee"])
+        rpc_connection.close_wallet()
+        monero_daemon.terminate()
+    except Exception as e:
+        print(e)
+        monero_daemon.terminate()
 
 def threaded_test(port,nodes,wallet):
     for node in nodes:
         #node = f'{node["hostname"]}:{node["port"]}'
-        if "onion" not in node:
-            print(f"{port} {node} {wallet}")
-            open_wallet_transfer(port,node,str(wallet))
+        print(f"{port} {node} {wallet}")
+        open_wallet_transfer(port,node,str(wallet))
 
 def main():
-    '''
-    stagenet = requests.get("https://www.ditatompel.com/api/monero/remote-node?nettype=stagenet").json()["data"]
-    extra_data =  {'adjusted_time': 1652096821,
-      'asn': 53667,
-      'asn_name': 'PONYNET',
-      'city': 'Roost',
-      'country': 'LU',
-      'database_size': 10737418240,
-      'difficulty': 323248,
-      'hostname': 'xmr-lux.boldsuck.org',
-      'ip_address': '104.244.75.217',
-      'is_tor': False,
-      'last_checked': 1652096854,
-      'last_height': 1088846,
-      'nettype': 'stagenet',
-      'port': 38081,
-      'postal': 0,
-      'protocol': 'http',
-      'status': 'online',
-      'uptime': 99.49
-      }
-          for i in range(30):
-        stagenet.append(extra_data)
-    '''
-
-    response = requests.get("https://monero.fail/?nettype=stagenet")
+    response = requests.get("https://monero.fail/?nettype=mainnet")
     webpage = response.content
     stagenet = []
     soup = BeautifulSoup(webpage, "html.parser")
     for tr in soup.find_all('tr'):
         values = [data for data in tr.find_all('td')]
         for value in values:
-            if "http" in value.text and "onion" not in value.text:
+            if "http" in value.text:
                 stagenet.append(value.text)
 
     num_wallets = 10
@@ -196,7 +182,7 @@ if __name__ == "__main__":
     d.terminate()
     '''
     # i cant make a wallet for some reason. copy an existing one instead
-    for i in range(10):
-        shutil.copy("./wallets/stage", f"./wallets/stage{i}")
-        shutil.copy("./wallets/stage.keys", f"./wallets/stage{i}.keys")
+    #for i in range(10):
+    #    shutil.copy("./wallets/kikstarter-test", f"./wallets/stage{i}")
+    #    shutil.copy("./wallets/kikstarter-test.keys", f"./wallets/stage{i}.keys")
     main()
