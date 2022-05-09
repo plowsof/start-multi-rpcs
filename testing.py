@@ -5,6 +5,9 @@ import time
 import requests
 import threading
 
+# create multiple wallets using monero rpc
+# save blockheight as restore height so they can be used 
+# I do not need to do this - i can just copy and paste the same wallet also (if spending is not required)
 def init_monero_rpc(rpc_port,num_wallets,height):
     rpc_url = f"http://localhost:{rpc_port}/json_rpc"
     rpc_args = [ 
@@ -39,6 +42,7 @@ def init_monero_rpc(rpc_port,num_wallets,height):
 
     return monero_daemon
 
+# wait until rpc is reachable
 def rpc_wallet_online(rpc_con):
     num_retries = 0
     while True:
@@ -56,6 +60,7 @@ def rpc_wallet_online(rpc_con):
             time.sleep(1)
             num_retries += 1
 
+# todo: handle if remote node is offline / return so the wallet can be used on another node
 def open_wallet_transfer(rpc_port,wallet_num,remote_node,wallet):
     print(remote_node)
     rpc_url = f"http://localhost:{rpc_port}/json_rpc"
