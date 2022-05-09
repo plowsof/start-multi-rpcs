@@ -8,6 +8,7 @@ import math
 import shutil
 from bs4 import BeautifulSoup
 
+# this is supposed to create wallets for me but they 'don't work' .. todo
 def init_monero_rpc(rpc_port,num_wallets,height):
     rpc_url = f"http://localhost:{rpc_port}/json_rpc"
     rpc_args = [ 
