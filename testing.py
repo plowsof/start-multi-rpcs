@@ -4,8 +4,6 @@ import subprocess
 import time
 import requests
 
-# create multiple wallets with monero-rpc-wallet
-# also save a sane restore height so theyre ready to use
 def init_monero_rpc(rpc_port,num_wallets,height):
     rpc_url = f"http://localhost:{rpc_port}/json_rpc"
     rpc_args = [ 
@@ -40,7 +38,6 @@ def init_monero_rpc(rpc_port,num_wallets,height):
 
     return monero_daemon
 
-# wait until rpc wallet is reachable
 def rpc_wallet_online(rpc_con):
     num_retries = 0
     while True:
@@ -58,7 +55,6 @@ def rpc_wallet_online(rpc_con):
             time.sleep(1)
             num_retries += 1
 
-# attempt a transfer 
 def open_wallet_transfer(rpc_port,wallet_num,remote_node):
     rpc_url = f"http://localhost:{rpc_port}/json_rpc"
     rpc_args = [ 
@@ -71,7 +67,7 @@ def open_wallet_transfer(rpc_port,wallet_num,remote_node):
     ]
     monero_daemon = subprocess.Popen(rpc_args,stdout=subprocess.PIPE)
     for line in iter(monero_daemon.stdout.readline,''):
-        print(line)
+        #print(line)
         if b"Starting wallet RPC server" in line.rstrip():
             break
         if b"Resource temporarily unavailable" in line.rstrip():
@@ -95,13 +91,24 @@ def open_wallet_transfer(rpc_port,wallet_num,remote_node):
 
     info = rpc_connection.transfer(params)
     pprint.pprint(info)
+    print(f"Node: {remote_node}\nFee:{info['fee']}")
     monero_daemon.terminate()
 
 '''
-# get block height to set restore height of new wallets
 height = requests.get("http://busyboredom.com:18081/get_info").json()["height"]
 d = init_monero_rpc("12311",10,height)
 d.terminate()
 '''
 
-open_wallet_transfer("12347","test","node2.sethforprivacy.com:38089")
+
+nodes = [
+    "stagenet.melo.tools:38081",
+    "stagenet.xmr-tw.org:38081",
+    "stagenet.community.rino.io:38081",
+    "xmr-lux.boldsuck.org:38081",
+    "node.sethforprivacy.com:38089",
+    "node2.sethforprivacy.com:38089"
+]
+
+for node in nodes:
+    open_wallet_transfer("12347","test",node)
