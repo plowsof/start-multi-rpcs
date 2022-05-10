@@ -85,7 +85,7 @@ def open_wallet_transfer(rpc_port,remote_node,wallet):
             ses = get_tor_session()
             r = ses.get(get_info,timeout=60)
         else:
-            r = requests.get(get_info,timeout=60)
+            r = requests.get(get_info,timeout=15)
         lol = list(r.json().keys())
         if lol == get_info_template:
             print(f"{get_info} nice")
@@ -105,7 +105,7 @@ def open_wallet_transfer(rpc_port,remote_node,wallet):
             # not synced
             return
     except Exception as e:
-        print(e)
+        print(f"{e} ~~~ {remote_node}")
         # its offline / slow
         return
 
@@ -155,7 +155,7 @@ def open_wallet_transfer(rpc_port,remote_node,wallet):
                 }],
         "account_index":0,
         "subaddr_indices":[0],
-        "priority":0,
+        "priority":1,
         "ring_size":11,
         "do_not_relay": True
         }
@@ -188,17 +188,6 @@ def threaded_test(port,nodes,wallet):
         open_wallet_transfer(port,node,str(wallet))
 
 def main():
-    '''
-    response = requests.get("https://monero.fail/?nettype=mainnet")
-    webpage = response.content
-    stagenet = []
-    soup = BeautifulSoup(webpage, "html.parser")
-    for tr in soup.find_all('tr'):
-        values = [data for data in tr.find_all('td')]
-        for value in values:
-            if "http" in value.text:
-                stagenet.append(value.text)
-    '''
     # get peer list ips
     con = sqlite3.connect('santas_xmr_list.db')
     cur = con.cursor()
@@ -217,15 +206,17 @@ def main():
     r = requests.get("http://192.168.1.68:18081/get_peer_list").json()
 
     node_list = []
-    for x in r["white_list"]:
+    for x in r["gray_list"]:
         if x.get("rpc_port"):
             if "::ffff:" in x["host"]:
                 x['host'] = x['host'].split("::ffff:")[1]   
             host = f"http://{x['host']}:{x['rpc_port']}/json_rpc"
             node_list.append(host)
+    take_node_list(node_list)
 
+def take_node_list(node_list):
     stagenet = node_list
-    num_wallets = 3
+    num_wallets = 10
     random.shuffle(stagenet)
     per_thread = len(stagenet) / num_wallets
     counter = 1
@@ -259,6 +250,37 @@ def main():
     for l in the_list:
         t = threading.Thread(target=threaded_test, args=(wallet_port[l],the_list[l],l,))
         t.start()
+
+def check_pl_file(fname):
+    with open(fname, "r") as f:
+        lines = f.readlines()
+    node_list = []
+    for line in lines:
+        if line:
+            lol = line.strip().split()
+            try:
+                ip = lol[2]
+                if "::ffff:" in ip:
+                    ip = ip.split("::ffff:")[1]
+                ip = ip.split(":")[0]
+                port = lol[3]
+                node = f'http://{ip}:{port}/json_rpc'
+                node_list.append(node)
+            except:
+                pass
+    take_node_list(node_list)
+
+def check_monero_fail():
+    response = requests.get("https://monero.fail/?nettype=mainnet")
+    webpage = response.content
+    stagenet = []
+    soup = BeautifulSoup(webpage, "html.parser")
+    for tr in soup.find_all('tr'):
+        values = [data for data in tr.find_all('td')]
+        for value in values:
+            if "http" in value.text:
+                stagenet.append(value.text)
+    take_node_list(stagenet)
 if __name__ == "__main__":
     #height = requests.get("http://busyboredom.com:18081/get_info").json()["height"]
     '''
@@ -270,4 +292,6 @@ if __name__ == "__main__":
     #for i in range(10):
     #    shutil.copy("./wallets/kikstarter-test", f"./wallets/stage{i}")
     #    shutil.copy("./wallets/kikstarter-test.keys", f"./wallets/stage{i}.keys")
-    main()
+    #main()
+    #check_pl_file("peer_list4.txt")
+    check_monero_fail()
