@@ -132,16 +132,19 @@ def open_wallet_transfer(rpc_port,remote_node,wallet):
             print("Please stop this docker container using 'docker stop <name>")
             print(f"{remote_node} offline")
             monero_daemon.terminate()
+            monero_daemon.wait()
             return
         if b"Error" in line.rstrip().lower() or b"Failed" in line.rstrip() or b"EXCEPTION" in line.rstrip():
             print(line)
             print(f"{remote_node} offline")
             monero_daemon.terminate()
+            monero_daemon.wait()
             return
         if b"failed: no connection to daemon" in line.rstrip():
             print("daemon offline")
             print(f"{remote_node} offline")
             monero_daemon.terminate()
+            monero_daemon.wait()
             return
     rpc_connection = AuthServiceProxy(service_url=f"http://127.0.0.1:{rpc_port}/json_rpc")
     params = {
